@@ -12,8 +12,6 @@ import numpy as np
 from cmath import exp
 from math import pi
 
-import time
-
 def transformee_fourier_1d(array):
     width = len(array)
     tf = np.empty([width], dtype=np.complex128)
@@ -39,75 +37,124 @@ def transformee_fourier_1d_inverse(array):
     return tf / width
 
 def transformee_fourier_2d(array):
-    (width, height) = util.get_array_dimensions(array)
-    transformee_fourier = np.empty([width, height], dtype=np.complex128)
+    (height, width) = util.get_array_dimensions(array)
+    transformee_fourier = np.empty([height, width], dtype=np.complex128)
 
-    for u in range(width):
-        for v in range(height):
+    for v in range(height):
+        for u in range(width):
             s = 0
-            for x in range(width):
-                for y in range(height):
-                    s += array[x, y] * exp(-2j*pi*(float(u*x)/float(width) + float(v*y)/float(height)))
-            transformee_fourier[u, v] = s
+            for y in range(height):
+                for x in range(width):
+                    s += array[y, x] * exp(-2j*pi*(float(u*x)/float(width) + float(v*y)/float(height)))
+            transformee_fourier[v, u] = s
     return transformee_fourier
 
 def transformee_fourier_2d_inverse(array):
-    (width, height) = util.get_array_dimensions(array)
-    transformee_fourier = np.empty([width, height], dtype=np.complex128)
+    (height, width) = util.get_array_dimensions(array)
+    transformee_fourier = np.empty([height, width], dtype=np.complex128)
 
-    for u in range(width):
-        for v in range(height):
+    for v in range(height):
+        for u in range(width):
             s = 0
-            for x in range(width):
-                for y in range(height):
-                    s += array[x, y] * exp(2j*pi*(float(u*x)/float(width) + float(v*y)/float(height)))
+            for y in range(height):
+                for x in range(width):
+                    s += array[y, x] * exp(2j*pi*(float(u*x)/float(width) + float(v*y)/float(height)))
                     
-            transformee_fourier[u, v] = s
-    return transformee_fourier
+            transformee_fourier[v, u] = s
+    return transformee_fourier / width / height
 
 def transformee_rapide_1d(array):
     width = len(array)
-    transformee_fourier = np.empty(width, dtype=np.complex128)
+    if(width == 1):
+        return np.asarray([array[0]], dtype=np.complex128)
     
-    for u in range(width):
-        transformee_fourier[u] = transformee_rapide_1d_point(array, u, width)
+    pair = transformee_rapide_1d(array[::2])
+    impair = transformee_rapide_1d(array[1::2])
+    tf = np.empty([width], dtype=np.complex128)
+    halfWidth = int(width/2)
+    
+    for u in range(halfWidth):
+        tf[u] = pair[u] + exp(-2j * pi * u / width) * impair[u]
+        tf[u + halfWidth] = pair[u] + exp(-2j * pi * (u + halfWidth) / width) * impair[u]
         
-    return transformee_fourier
+    return tf    
 
-def transformee_rapide_1d_point(array, u, initialWidth):
+def transformee_rapide_1d_inverse_recur(array):
     width = len(array)
     if(width == 1):
-        return array[0]
+        return np.asarray([array[0]], dtype=np.complex128)
+    
+    pair = transformee_rapide_1d_inverse_recur(array[::2])
+    impair = transformee_rapide_1d_inverse_recur(array[1::2])
+    tf = np.empty([width], dtype=np.complex128)
+    halfWidth = int(width/2)
+    
+    for u in range(halfWidth):
+        tf[u] = pair[u] + exp(2j * pi * u / width) * impair[u]
+        tf[u + halfWidth] = pair[u] + exp(2j * pi * (u + halfWidth) / width) * impair[u]
+        
+    return tf
 
-    pair = []
-    impair = []
+def transformee_rapide_1d_inverse(array):
+    width = len(array)
+    return transformee_rapide_1d_inverse_recur(array) / width
+
+def transformee_rapide_2d(array):
+    (height, width) = util.get_array_dimensions(array)
+    tf = np.empty([height, width], dtype=np.complex128)
+
+    tfLignes = []
+    for i in range(height):
+        tfLignes.append(transformee_rapide_1d(array[i]))
+        
+    tfColonnes = []
     for i in range(width):
-        if(i % 2 == 0):
-            pair.append(array[i])
-        else:
-            impair.append(array[i])
+        tfColonnes.append(transformee_rapide_1d([tfLignes[x][i] for x in range(height)]))
+    
+    for u in range(height):
+        for v in range(width):
+            tf[u, v] = tfColonnes[v][u]
+    
+    return tf
 
-    return transformee_rapide_1d_point(pair, u, initialWidth / 2) + exp(-2j*pi*u/float(initialWidth)) * transformee_rapide_1d_point(impair, u, initialWidth / 2)
+def transformee_rapide_2d_inverse(array):
+    (height, width) = util.get_array_dimensions(array)
+    tf = np.empty([height, width], dtype=np.complex128)
 
+    tfLignes = []
+    for i in range(height):
+        tfLignes.append(transformee_rapide_1d_inverse(array[i]))
+        
+    tfColonnes = []
+    for i in range(width):
+        tfColonnes.append(transformee_rapide_1d_inverse([tfLignes[x][i] for x in range(height)]))
+    
+    for u in range(height):
+        for v in range(width):
+            tf[u, v] = tfColonnes[v][u]
+    
+    return tf
+    
 data = util.load_img("test3.png")
 grey_values = util.normalize_img(util.rgb_array_to_gray(data))
-    
-m = 5
-data = [i/m for i in range(m)]
-start = time.time()
-tf = transformee_fourier_1d(data)
+#data = np.asarray([[i/m for i in range(m)] for y in range(n)], dtype=np.complex128)
+#print(data)
+#start = time.time()
+#tf = transformee_fourier_1d(data)
 #print("tf : " + str(time.time() - start))
 #start = time.time()
-tfr = transformee_rapide_1d(data)
-print(tf)
-print(tfr)
-print("tf rapide : " + str(time.time() - start))
+#tfr = transformee_rapide_1d(data)
+#print(transformee_fourier_1d_inverse(data))
 
-#tf = transformee_fourier(grey_values)
-#tf /= tf.max()
-#itf = transformee_fourier_inverse(tf)
-#itf /= itf.max()
-        
-#util.show_img(util.unnormalize_img(grey_values))
-#util.show_img(util.unnormalize_img(tf))
-#util.show_img(util.unnormalize_img(itf))
+tf = transformee_rapide_2d(grey_values)
+itf = transformee_rapide_2d_inverse(tf)
+print(np.allclose(tf, np.fft.fft2(grey_values)))
+#print(tf)
+#print(np.fft.fft2(grey_values))
+#print(np.allclose(tf, np.fft.fft2(grey_values)))
+#print(np.allclose(tf, transformee_fourier_2d(grey_values)))
+util.show_img(util.unnormalize_img(grey_values))
+util.show_img(util.unnormalize_img(tf))
+util.show_img(util.unnormalize_img(itf))
+
+util.show_img(util.unnormalize_img(np.fft.fft2(grey_values)))
